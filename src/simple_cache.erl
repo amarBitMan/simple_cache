@@ -31,7 +31,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Public API.
 -export([init/1]).
--export([get/4]).
+-export([get/4, get/5]).
 -export([flush/1, flush/2, clear/2, create_value/4]).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -68,19 +68,42 @@ flush(CacheName) ->
 %% on a miss.
 -spec get(string(), infinity|pos_integer(), term(), function()) -> term().
 get(CacheName, LifeTime, Key, FunResult) ->
+  get(CacheName, LifeTime, Key, FunResult, #{}).
+
+-spec get(string(), infinity|pos_integer(), term(), function(), map()) -> term().
+get(CacheName, LifeTime, Key, FunResult, Options) ->
   RealName = ?NAME(CacheName),
+  CollectMetric = maps:get(collect_metric, Options, false),
   case ets:lookup(RealName, Key) of
     [] ->
       % Not found, create it.
+      case CollectMetric of
+        true -> prometheus_counter:inc(simple_cache_miss, [CacheName]);
+        false -> ok
+      end,
       create_value(RealName, LifeTime, Key, FunResult);
-    [{Key, R, _CreatedTime, infinity}] -> R; % Found, wont expire, return the value.
+    [{Key, R, _CreatedTime, infinity}] ->
+      case CollectMetric of
+        true -> prometheus_counter:inc(simple_cache_hit, [CacheName]);
+        false -> ok
+      end,
+      R; % Found, wont expire, return the value.
     [{Key, R, CreatedTime, LifeTime}] ->
       TimeElapsed = now_usecs() - CreatedTime,
       if
         TimeElapsed > (LifeTime * 1000) ->
           % expired? create a new value
+          case CollectMetric of
+            true -> prometheus_counter:inc(simple_cache_miss, [CacheName]);
+            false -> ok
+          end,
           create_value(RealName, LifeTime, Key, FunResult);
-        true -> R % Not expired, return it.
+        true ->
+          case CollectMetric of
+            true -> prometheus_counter:inc(simple_cache_hit, [CacheName]);
+            false -> ok
+          end,
+          R % Not expired, return it.
       end
   end.
 
