@@ -78,13 +78,13 @@ get(CacheName, LifeTime, Key, FunResult, Options) ->
     [] ->
       % Not found, create it.
       case CollectMetric of
-        true -> prometheus_counter:inc(simple_cache_miss, [CacheName]);
+        true -> prometheus_summary:observe(simple_cache_hit_boolean, [CacheName], 0);
         false -> ok
       end,
       create_value(RealName, LifeTime, Key, FunResult);
     [{Key, R, _CreatedTime, infinity}] ->
       case CollectMetric of
-        true -> prometheus_counter:inc(simple_cache_hit, [CacheName]);
+        true -> prometheus_summary:observe(simple_cache_hit_boolean, [CacheName], 1);
         false -> ok
       end,
       R; % Found, wont expire, return the value.
@@ -94,13 +94,13 @@ get(CacheName, LifeTime, Key, FunResult, Options) ->
         TimeElapsed > (LifeTime * 1000) ->
           % expired? create a new value
           case CollectMetric of
-            true -> prometheus_counter:inc(simple_cache_miss, [CacheName]);
+            true -> prometheus_summary:observe(simple_cache_hit_boolean, [CacheName], 0);
             false -> ok
           end,
           create_value(RealName, LifeTime, Key, FunResult);
         true ->
           case CollectMetric of
-            true -> prometheus_counter:inc(simple_cache_hit, [CacheName]);
+            true -> prometheus_summary:observe(simple_cache_hit_boolean, [CacheName], 1);
             false -> ok
           end,
           R % Not expired, return it.
